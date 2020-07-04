@@ -29,13 +29,14 @@ def print_bootloader_help():
     cli.echo('\tst-link-cli')
     cli.echo('For more info, visit https://docs.qmk.fm/#/flashing')
 
-
 @cli.argument('filename', nargs='?', arg_only=True, type=FileType('r'), help='The configurator export JSON to compile.')
 @cli.argument('-b', '--bootloaders', action='store_true', help='List the available bootloaders.')
-@cli.argument('-bl', '--bootloader', default='flash', help='The flash command, corresponding to qmk\'s make options of bootloaders.')
+@cli.argument('-bl', '--bootloader', default='avrdude', help='The flash command, corresponding to qmk\'s make options of bootloaders.')
 @cli.argument('-km', '--keymap', help='The keymap to build a firmware for. Use this if you dont have a configurator file. Ignored when a configurator file is supplied.')
 @cli.argument('-kb', '--keyboard', help='The keyboard to build a firmware for. Use this if you dont have a configurator file. Ignored when a configurator file is supplied.')
 @cli.argument('-n', '--dry-run', arg_only=True, action='store_true', help="Don't actually build, just show the make command to be run.")
+@cli.argument('-l', '--left', arg_only=True, action='store_true', help="Flash left side")
+@cli.argument('-r', '--right', arg_only=True, action='store_true', help="Flash right side")
 @cli.subcommand('QMK Flash.')
 @automagic_keyboard
 @automagic_keymap
@@ -57,23 +58,35 @@ def flash(cli):
         print_bootloader_help()
         return False
 
+    boot = []
+    boot.append(cli.args.bootloader)
+
+    if cli.args.bootloader == "avrdude":
+        if cli.args.left:
+            boot.append('-split-left')
+        elif cli.args.right:
+            boot.append('-split-right')
+    
+    bootloader = ''.join(boot)
+
     if cli.args.filename:
         # Handle compiling a configurator JSON
         user_keymap = parse_configurator_json(cli.args.filename)
         keymap_path = qmk.path.keymap(user_keymap['keyboard'])
-        command = compile_configurator_json(user_keymap, cli.args.bootloader)
+        command = compile_configurator_json(user_keymap, bootloader)
 
         cli.log.info('Wrote keymap to {fg_cyan}%s/%s/keymap.c', keymap_path, user_keymap['keymap'])
 
     else:
         if cli.config.flash.keyboard and cli.config.flash.keymap:
             # Generate the make command for a specific keyboard/keymap.
-            command = create_make_command(cli.config.flash.keyboard, cli.config.flash.keymap, cli.args.bootloader)
+            command = create_make_command(cli.config.flash.keyboard, cli.config.flash.keymap, bootloader)
 
         elif not cli.config.flash.keyboard:
             cli.log.error('Could not determine keyboard!')
         elif not cli.config.flash.keymap:
             cli.log.error('Could not determine keymap!')
+    
 
     # Compile the firmware, if we're able to
     if command:
