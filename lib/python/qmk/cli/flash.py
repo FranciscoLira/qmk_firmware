@@ -3,7 +3,6 @@
 You can compile a keymap already in the repo or using a QMK Configurator export.
 A bootloader must be specified.
 """
-import subprocess
 from argparse import FileType
 
 from milc import cli
@@ -27,6 +26,7 @@ def print_bootloader_help():
     cli.echo('\tdfu-util-split-left')
     cli.echo('\tdfu-util-split-right')
     cli.echo('\tst-link-cli')
+    cli.echo('\tst-flash')
     cli.echo('For more info, visit https://docs.qmk.fm/#/flashing')
 
 @cli.argument('filename', nargs='?', arg_only=True, type=FileType('r'), help='The configurator export JSON to compile.')
@@ -37,6 +37,9 @@ def print_bootloader_help():
 @cli.argument('-n', '--dry-run', arg_only=True, action='store_true', help="Don't actually build, just show the make command to be run.")
 @cli.argument('-l', '--left', arg_only=True, action='store_true', help="Flash left side")
 @cli.argument('-r', '--right', arg_only=True, action='store_true', help="Flash right side")
+@cli.argument('-j', '--parallel', type=int, default=1, help="Set the number of parallel make jobs to run.")
+@cli.argument('-e', '--env', arg_only=True, action='append', default=[], help="Set a variable to be passed to make. May be passed multiple times.")
+@cli.argument('-c', '--clean', arg_only=True, action='store_true', help="Remove object files before compiling.")
 @cli.subcommand('QMK Flash.')
 @automagic_keyboard
 @automagic_keymap
@@ -50,6 +53,20 @@ def flash(cli):
 
     If bootloader is omitted the make system will use the configured bootloader for that keyboard.
     """
+    if cli.args.clean and not cli.args.filename and not cli.args.dry_run:
+        command = create_make_command(cli.config.flash.keyboard, cli.config.flash.keymap, 'clean')
+        cli.run(command, capture_output=False)
+
+    # Build the environment vars
+    envs = {}
+    for env in cli.args.env:
+        if '=' in env:
+            key, value = env.split('=', 1)
+            envs[key] = value
+        else:
+            cli.log.warning('Invalid environment variable: %s', env)
+
+    # Determine the compile command
     command = ''
 
     if cli.args.bootloaders:
@@ -73,14 +90,15 @@ def flash(cli):
         # Handle compiling a configurator JSON
         user_keymap = parse_configurator_json(cli.args.filename)
         keymap_path = qmk.path.keymap(user_keymap['keyboard'])
-        command = compile_configurator_json(user_keymap, bootloader)
+        command = compile_configurator_json(user_keymap, bootloader, parallel=cli.config.flash.parallel, **envs)
+
 
         cli.log.info('Wrote keymap to {fg_cyan}%s/%s/keymap.c', keymap_path, user_keymap['keymap'])
 
     else:
         if cli.config.flash.keyboard and cli.config.flash.keymap:
             # Generate the make command for a specific keyboard/keymap.
-            command = create_make_command(cli.config.flash.keyboard, cli.config.flash.keymap, bootloader)
+            command = create_make_command(cli.config.flash.keyboard, cli.config.flash.keymap, bootloader, parallel=cli.config.flash.parallel, **envs)
 
         elif not cli.config.flash.keyboard:
             cli.log.error('Could not determine keyboard!')
@@ -93,7 +111,8 @@ def flash(cli):
         cli.log.info('Compiling keymap with {fg_cyan}%s', ' '.join(command))
         if not cli.args.dry_run:
             cli.echo('\n')
-            subprocess.run(command)
+            compile = cli.run(command, capture_output=False, text=True)
+            return compile.returncode
 
     else:
         cli.log.error('You must supply a configurator export, both `--keyboard` and `--keymap`, or be in a directory for a keyboard or keymap.')
