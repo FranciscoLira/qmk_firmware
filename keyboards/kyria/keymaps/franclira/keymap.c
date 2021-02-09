@@ -285,8 +285,11 @@ void print_layer(void){
         case _SPCKEYS:
             oled_write_P(PSTR("Special\n"), false);
             break;
-        case _ADJUST:
-            oled_write_P(PSTR("Adjust\n"), false);
+        case _STREAM:
+            oled_write_P(PSTR("Stream\n"), false);
+            break;
+        case _LAYERS:
+            oled_write_P(PSTR("Layers\n"), false);
             break;
         default:
             oled_write_P(PSTR("Undefined\n"), false);
@@ -355,32 +358,28 @@ void render_stream_left(void){
 }
 
 void render_layers_right(void){
-    print_layer();
     oled_write_P(PSTR("\n"),false);
     oled_write_P(PSTR("       7  8  9       "),false);
     oled_write_P(PSTR("       4  5  6       "),false);
     oled_write_P(PSTR("       1  2  3       "),false);
     oled_write_P(PSTR("    PLAY/STOP PAUSE  "),false);
     oled_write_P(PSTR("\n"),false);
+    print_layer();
 }
 
 
 void oled_task_user(void) {
-    switch (get_highest_layer(layer_state)) {
-        case _QWERTY:
-            if (is_keyboard_master()) render_qwerty_left(); 
-            else render_qwerty_right();
-            break;
-        case _STREAM:
-            if (is_keyboard_master()) 
+    if (get_highest_layer(layer_state)==_QWERTY)
+        if (is_keyboard_master()) 
+            render_qwerty_left(); 
+        else
+            render_qwerty_right();
+    else if (get_highest_layer(layer_state)==_STREAM)
+        if (is_keyboard_master()) 
                 render_stream_left();
             else
                 render_cesium_logo();
-            break;
-        default:
-            print_layer();
-    }
-    
+    else render_qwerty_left(); 
 }
 #endif
 
